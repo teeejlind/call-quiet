@@ -56,11 +56,16 @@ final class Muter {
   var aggregate = AudioObjectID(kAudioObjectUnknown)
   var ioProc: AudioDeviceIOProcID?
   var muted: [AudioObjectID] = []
+  var outputUID: String?
 
   func apply(_ processes: [AudioObjectID]) {
-    guard processes != muted else { return }
+    // Rebuild when the app list changes or the output device does (e.g. headphones
+    // connecting mid-call), since the tap is clocked by that device.
+    let uid = defaultOutputUID()
+    guard processes != muted || uid != outputUID else { return }
     teardown()
-    guard !processes.isEmpty, let outputUID = defaultOutputUID() else { return }
+    guard !processes.isEmpty, let outputUID = uid else { return }
+    self.outputUID = uid
 
     let description = CATapDescription(stereoMixdownOfProcesses: processes)
     description.muteBehavior = .muted
@@ -124,6 +129,18 @@ muter.apply(matchingProcesses())
 // Pick up Slack restarts or new audio helpers.
 let rescan = Timer(timeInterval: 3, repeats: true) { _ in muter.apply(matchingProcesses()) }
 RunLoop.main.add(rescan, forMode: .default)
+
+// If the parent (Hammerspoon) dies or is killed, release the tap instead of
+// leaving apps muted with nothing to turn them back on.
+let parent = getppid()
+let parentWatch = DispatchSource.makeProcessSource(identifier: parent, eventMask: .exit, queue: .main)
+if parent > 1 {
+  parentWatch.setEventHandler {
+    muter.teardown()
+    exit(0)
+  }
+  parentWatch.resume()
+}
 
 var signalSources: [DispatchSourceSignal] = []
 for sig in [SIGTERM, SIGINT, SIGHUP] {

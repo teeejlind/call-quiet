@@ -74,11 +74,22 @@ cq:start()
 | `detectZoomMeeting` | true | Zoom's `CptHost` process counts as a call |
 | `showAlerts` | true | On-screen 🔕/🔔 messages |
 | `logPath` | `~/.hammerspoon/CallQuiet.log` | `nil` for no log |
+| `maxLogBytes` | 262144 | Log rotates to `<logPath>.1` past this size |
+| `helperTimeoutSeconds` | 5 | A hung `mic-users` scan is killed after this long |
 | `helperDir` | `<spoon>/bin` | Where `mic-users` and `app-mute` live |
 
 Find a bundle ID with `osascript -e 'id of app "Slack"'`, or run `CallQuiet.spoon/bin/mic-users` while the app is on a call.
 
-Other methods: `spoon.CallQuiet:status()` returns a table of the current state; `:reset()` restores sounds immediately; `:stop()` stops watching.
+Other methods: `spoon.CallQuiet:status()` returns a table of the current state; `:reset()` (the hotkey) restores sounds immediately and stays un-muted until the current call ends, then re-arms; `:stop()` stops watching.
+
+## Behavior worth knowing
+
+- **Reload or crash mid-call**: the saved alert volume is kept in Hammerspoon's settings. After a reload Call Quiet comes back quiet if the call is still on, and restores when it ends. If Hammerspoon is killed, `app-mute` notices its parent died and releases the tap; the alert volume itself stays at 0 until Hammerspoon next starts.
+- **Sleep/wake**: timers and mic state are reset on wake, so a call that ended during sleep doesn't leave you muted.
+- **Alert volume already 0**: left at 0 afterwards, never bumped up.
+- **You change alert volume mid-call**: your change wins; the saved level isn't forced back on.
+- **Helper hangs or fails**: a hung `mic-users` is killed after 5 seconds; a failed scan counts as "no one on the mic". A crashing `app-mute` is retried at most every 10 seconds.
+- **Missing helpers**: `start()` refuses and tells you to run `scripts/build.sh`. A missing `app-mute` alone only disables app muting.
 
 ## Known limits
 
@@ -88,7 +99,12 @@ Other methods: `spoon.CallQuiet:status()` returns a table of the current state; 
 - Muting uses the default system output device. Switching devices mid-call is picked up on the helper's next 3-second rescan.
 - Apps that bypass alert volume and aren't in `appMutePrefixes` will keep making noise.
 - Not tested on macOS versions before 14.2 (the helpers won't work there) or with multiple simultaneous output devices.
+- WhatsApp (and any app that holds the mic to record a voice note) counts as a call for as long as it holds the mic, after the 3-second debounce.
 - Developed and used daily on one machine. Expect rough edges elsewhere; issues welcome.
+
+## Tests
+
+`tests/mock_test.lua` exercises the logic against a fake `hs` (call start/end, reset, reload, wake, helper failure and hang, volume edge cases). Run it with any Lua 5.3+ (`lua tests/mock_test.lua`). It does not test real audio; that needs a real call.
 
 ## Layout
 
@@ -97,6 +113,7 @@ CallQuiet.spoon/init.lua   the Spoon
 helpers/                   Swift source for mic-users and app-mute
 scripts/build.sh           compile helpers (optionally to a custom dir)
 scripts/install.sh         build + copy the Spoon into ~/.hammerspoon/Spoons
+tests/mock_test.lua        logic tests with a mocked Hammerspoon
 ```
 
 ## License

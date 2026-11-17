@@ -7,6 +7,6 @@ out="${1:-$root/CallQuiet.spoon/bin}"
 mkdir -p "$out"
 for name in mic-users app-mute; do
   echo "building $name"
-  swiftc -O "$root/helpers/$name.swift" -o "$out/$name"
+  swiftc -O -swift-version 5 "$root/helpers/$name.swift" -o "$out/$name"
 done
 echo "done: $out"
